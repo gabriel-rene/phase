@@ -327,11 +327,8 @@ export function HomeDashboard() {
   // reads once (rail = sigil, masthead = wordmark) with no repeated shape.
   const masthead = (
     <div className="flex w-full flex-col items-start">
-      <img
-        src="/wordmark.webp"
-        alt="phase.rs"
-        className="h-10 w-auto drop-shadow-[0_0_16px_rgba(251,146,60,0.25)]"
-      />
+      {/* Personal build: set the wordmark in the display face, not the image. */}
+      <h1 className="font-display text-5xl leading-none text-amber-300">phase.rs</h1>
       <p className="mt-3 max-w-xl text-[1.02rem] leading-relaxed text-fg-muted">
         {t("home.dashboard.tagline")}
       </p>

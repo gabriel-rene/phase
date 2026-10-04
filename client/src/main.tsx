@@ -11,6 +11,14 @@ import "@fontsource-variable/jetbrains-mono";
 // 187 KB font is bundled here and in the Tauri app.
 import "mana-font/css/mana.css";
 import "./index.css";
+// Personal build: vintage re-skin overlay (fonts + token overrides). Must load
+// after index.css. Remove these five imports to restore the upstream look.
+import "@fontsource-variable/vollkorn";
+import "@fontsource/im-fell-english";
+import "@fontsource/im-fell-english/400-italic.css";
+import "@fontsource/courier-prime";
+import "@fontsource/courier-prime/700.css";
+import "./theme-vintage.css";
 import "./i18n"; // initialize i18next before any component renders
 import { App } from "./App";
 import { installHiddenDocumentMotion } from "./animation/hiddenDocumentMotion";

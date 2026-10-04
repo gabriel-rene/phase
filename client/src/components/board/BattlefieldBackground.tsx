@@ -120,7 +120,7 @@ export function BattlefieldBackground() {
       : bg.kind === "image"
         ? { backgroundImage: cssUrl(bg.src) }
         : bg.kind === "color"
-          ? { backgroundColor: bg.css }
+          ? { background: bg.css }
           : {};
 
   const className =

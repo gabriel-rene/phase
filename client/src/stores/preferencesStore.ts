@@ -285,7 +285,7 @@ function buildDefaultPreferences(): PreferencesState {
     hudLayout: "inline",
     followActiveOpponent: true,
     logPanelLastChoice: "open",
-    boardBackground: "auto-wubrg",
+    boardBackground: "table_walnut",
     customBackgroundUrl: "",
     vfxQuality: "full",
     cardAnimationStyle: "webgl",
@@ -865,7 +865,7 @@ export const usePreferencesStore = create<PreferencesState & PreferencesActions>
     }),
     {
       name: "phase-preferences",
-      version: 39,
+      version: 40,
       // v0 → v1: flat aiDifficulty + aiDeckName become aiSeats[0].
       // v1 → v2: discrete animationSpeed/combatPacing enums become numeric
       //          animationSpeedMultiplier/combatPacingMultiplier.
@@ -961,6 +961,7 @@ export const usePreferencesStore = create<PreferencesState & PreferencesActions>
       // v38 → v39: Add humanPoolSelection/aiPoolSelection. Absent keys fall
       //          through the shallow merge to include-all; present-but-malformed
       //          blobs normalize below (and in `merge` for current-version blobs).
+      // v39 → v40: Personal build: swap the painted arenas for the walnut table once.
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== "object") return persisted;
         let migrated = persisted as Record<string, unknown>;
@@ -1189,6 +1190,20 @@ export const usePreferencesStore = create<PreferencesState & PreferencesActions>
               ? undefined
               : normalizePoolSelection(legacy.aiPoolSelection),
           };
+        }
+
+        if (version < 40) {
+          switch (migrated.boardBackground) {
+            case "auto-wubrg":
+            case "random":
+            case "air_angelic_sky":
+            case "water_moonlit_ocean_temple":
+            case "shadow_moon_coven_sanctum":
+            case "fire_molten":
+            case "earth_snowy_forest":
+              migrated = { ...migrated, boardBackground: "table_walnut" };
+              break;
+          }
         }
 
         return {
