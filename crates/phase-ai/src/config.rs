@@ -1450,12 +1450,15 @@ pub fn create_config(difficulty: AiDifficulty, platform: Platform) -> AiConfig {
                 determinization_samples: 0,
             },
         ),
+        // Personal build: Hard sits at the midpoint of Medium and upstream Hard
+        // (upstream: 0.5 / 0.55 / 0.9 / 1.1, max_nodes 48) to soften the
+        // Medium -> Hard jump.
         AiDifficulty::Hard => (
-            0.5,
+            0.75,
             AiProfile {
-                risk_tolerance: 0.55,
-                interaction_patience: 0.9,
-                stabilize_bias: 1.1,
+                risk_tolerance: 0.6,
+                interaction_patience: 0.8,
+                stabilize_bias: 1.05,
                 combat_ev_model: CombatEvModel::DownsideWeighted,
                 ..AiProfile::default()
             },
@@ -1464,7 +1467,7 @@ pub fn create_config(difficulty: AiDifficulty, platform: Platform) -> AiConfig {
             SearchConfig {
                 enabled: true,
                 max_depth: 3,
-                max_nodes: 48,
+                max_nodes: 36,
                 max_branching: 5,
                 planner_mode: PlannerMode::BeamPlusRollout,
                 rollout_depth: 2,
@@ -1723,10 +1726,10 @@ mod tests {
     #[test]
     fn hard_increases_depth() {
         let config = create_config(AiDifficulty::Hard, Platform::Native);
-        assert_eq!(config.temperature, 0.5);
+        assert_eq!(config.temperature, 0.75);
         assert!(config.profile.stabilize_bias > 1.0);
         assert_eq!(config.search.max_depth, 3);
-        assert_eq!(config.search.max_nodes, 48);
+        assert_eq!(config.search.max_nodes, 36);
         assert_eq!(config.search.rollout_depth, 2);
         // Hard ships perfect-information search (K=0) like every tier.
         assert_eq!(config.search.determinization_samples, 0);
