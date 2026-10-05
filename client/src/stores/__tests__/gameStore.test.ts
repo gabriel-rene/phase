@@ -7,6 +7,7 @@ import { saveAuthoritativeGame, saveAuthoritativeGameStrict } from "../../servic
 import { useAppNotificationStore } from "../../stores/appToastStore";
 import { usePreferencesStore } from "../../stores/preferencesStore";
 import { useUiStore } from "../../stores/uiStore";
+import { MAX_UNDO_HISTORY } from "../../constants/game";
 import { buildEngineAdapterMock } from "../../test/factories/engineAdapterFactory";
 import {
   buildGameState,
@@ -359,11 +360,9 @@ describe("gameStore", () => {
     expect(useGameStore.getState().stateHistory).toHaveLength(0);
   });
 
-  it("dispatch does not push to stateHistory when the stack is non-empty", async () => {
-    // Even an undoable action like PassPriority must skip the checkpoint
-    // while something is mid-resolution. Otherwise undoing later would
-    // land the player back on a stack-with-stuff state instead of a clean
-    // pre-trigger boundary.
+  it("dispatch pushes to stateHistory when the stack is non-empty (personal: UNDO_ANY_ACTION)", async () => {
+    // Personal build: checkpoints are trusted engine envelopes, so a
+    // mid-stack state is a valid undo target.
     const triggerOnStack = buildStackEntry({
       id: 100,
       kind: {
@@ -376,7 +375,9 @@ describe("gameStore", () => {
     });
     const state1 = buildGameState({ turn_number: 1, stack: [triggerOnStack] });
     const state2 = buildGameState({ turn_number: 2 });
-    const exportPersistenceState = vi.fn().mockResolvedValue("{}");
+    const exportPersistenceState = vi
+      .fn()
+      .mockResolvedValue(JSON.stringify({ state: state1, precast_shortcut_runtime: null }));
     const adapter = buildEngineAdapterMock(state1, { exportPersistenceState });
 
     await act(() => useGameStore.getState().initGame("test-id", adapter));
@@ -384,26 +385,28 @@ describe("gameStore", () => {
 
     await act(() => useGameStore.getState().dispatch({ type: "PassPriority" }));
 
-    expect(useGameStore.getState().stateHistory).toHaveLength(0);
-    expect(exportPersistenceState).not.toHaveBeenCalled();
+    expect(useGameStore.getState().stateHistory).toHaveLength(1);
+    expect(exportPersistenceState).toHaveBeenCalled();
   });
 
-  it("dispatch does not push to stateHistory for revealed-info actions", async () => {
+  it("dispatch pushes to stateHistory for revealed-info actions (personal: UNDO_ANY_ACTION)", async () => {
     const state1 = buildGameState();
     const state2 = buildGameState({ turn_number: 2 });
-    const exportPersistenceState = vi.fn().mockResolvedValue("{}");
+    const exportPersistenceState = vi
+      .fn()
+      .mockResolvedValue(JSON.stringify({ state: state1, precast_shortcut_runtime: null }));
     const adapter = buildEngineAdapterMock(state1, { exportPersistenceState });
 
     await act(() => useGameStore.getState().initGame("test-id", adapter));
     adapter.getState.mockResolvedValue(state2);
 
-    // PlayLand is NOT in UNDOABLE_ACTIONS
+    // PlayLand is not in UNDOABLE_ACTIONS; UNDO_ANY_ACTION checkpoints it anyway.
     await act(() =>
       useGameStore.getState().dispatch({ type: "PlayLand", data: { object_id: 10, card_id: 1 } }),
     );
 
-    expect(useGameStore.getState().stateHistory).toHaveLength(0);
-    expect(exportPersistenceState).not.toHaveBeenCalled();
+    expect(useGameStore.getState().stateHistory).toHaveLength(1);
+    expect(exportPersistenceState).toHaveBeenCalled();
   });
 
   it("undo restores previous state from stateHistory", async () => {
@@ -479,7 +482,7 @@ describe("gameStore", () => {
   });
 
   it("limits stateHistory to MAX_UNDO_HISTORY entries", async () => {
-    const states = Array.from({ length: 7 }, (_, i) =>
+    const states = Array.from({ length: MAX_UNDO_HISTORY + 2 }, (_, i) =>
       buildGameState({ turn_number: i }),
     );
     const adapter = buildEngineAdapterMock(states[0], {
@@ -497,8 +500,7 @@ describe("gameStore", () => {
       );
     }
 
-    // Should be capped at 5
-    expect(useGameStore.getState().stateHistory).toHaveLength(5);
+    expect(useGameStore.getState().stateHistory).toHaveLength(MAX_UNDO_HISTORY);
   });
 
   it("dispatch does not push to stateHistory in multiplayer", async () => {

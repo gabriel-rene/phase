@@ -24,8 +24,21 @@ export const UNDOABLE_ACTIONS = new Set([
   "ActivateAbility",
 ]);
 
+/**
+ * Personal build: checkpoint every human action in a local game, not only
+ * UNDOABLE_ACTIONS at an empty stack. Checkpoints are trusted engine
+ * envelopes, so restoring a mid-stack state is valid. Undo can reveal
+ * hidden information (a drawn card stays seen); that trade is accepted here.
+ */
+export const UNDO_ANY_ACTION = true;
+
+/** Whether a human action of this type at this stack depth gets an undo checkpoint. */
+export function isUndoCheckpointAction(actionType: string, stackLength: number): boolean {
+  return UNDO_ANY_ACTION || (UNDOABLE_ACTIONS.has(actionType) && stackLength === 0);
+}
+
 /** Maximum number of undo history entries. */
-export const MAX_UNDO_HISTORY = 5;
+export const MAX_UNDO_HISTORY = UNDO_ANY_ACTION ? 20 : 5;
 
 /** Player ID for the human player (always player 0). */
 export const PLAYER_ID = 0;

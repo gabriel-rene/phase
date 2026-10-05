@@ -22,7 +22,7 @@ import type {
   WaitingFor,
 } from "../adapter/types";
 import type { ViewerInteraction } from "../adapter/generated/interaction";
-import { MAX_UNDO_HISTORY, UNDOABLE_ACTIONS } from "../constants/game";
+import { MAX_UNDO_HISTORY, isUndoCheckpointAction } from "../constants/game";
 import { applySpellPaymentPreference } from "../game/castPaymentMode";
 import { reportStructuredActionRejection } from "../game/actionRejectionReporter";
 import { getPlayerId } from "../hooks/usePlayerId";
@@ -684,10 +684,10 @@ export const useGameStore = create<GameStore>()(
       // 3. Stack is empty. Checkpoints exist only at stack-empty boundaries
       //    so undo always lands the player before the most recent
       //    activation/trigger sequence, never mid-resolution.
+      //    (Personal build: 1 and 3 are lifted by UNDO_ANY_ACTION.)
       const shouldSaveHistory =
-        UNDOABLE_ACTIONS.has(submittedAction.type) &&
-        !isAuthorityRemote(gameMode) &&
-        gameState.stack.length === 0;
+        isUndoCheckpointAction(submittedAction.type, gameState.stack.length) &&
+        !isAuthorityRemote(gameMode);
 
       // Fire the trusted-envelope capture WITHOUT awaiting it: both engine
       // transports execute requests strictly in call order (worker message

@@ -12,7 +12,7 @@ import { SPECTATOR_PLAYER_ID } from "../constants/game";
 import { getPlayerId } from "../hooks/usePlayerId";
 import type { AnimationStep } from "../animation/types";
 import { audioManager } from "../audio/AudioManager";
-import { MAX_UNDO_HISTORY, UNDOABLE_ACTIONS } from "../constants/game";
+import { MAX_UNDO_HISTORY, isUndoCheckpointAction } from "../constants/game";
 import { debugLog } from "./debugLog";
 import { flashCompletedScry, flashInGameRolls } from "./diceContest";
 import i18n from "../i18n";
@@ -460,10 +460,10 @@ async function processAction(
   //       states the AI loop instantly re-applies, so undo would land nowhere.
   //    e) Not loop-automated (auto-pass) — same re-application one beat later.
   const { gameMode, aiSeatIds } = useGameStore.getState();
+  //    (Personal build: a and c are lifted by UNDO_ANY_ACTION.)
   const shouldSaveHistory =
-    UNDOABLE_ACTIONS.has(action.type) &&
+    isUndoCheckpointAction(action.type, gameState.stack.length) &&
     !isAuthorityRemote(gameMode) &&
-    gameState.stack.length === 0 &&
     !aiSeatIds.includes(actor) &&
     !automated;
 
