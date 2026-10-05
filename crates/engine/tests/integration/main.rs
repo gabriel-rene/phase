@@ -1336,6 +1336,7 @@ mod perpetual_last_created_empty_no_source_fallback;
 mod perpetual_modify_pt_historical_restore;
 mod perpetual_trigger_subject_binding;
 mod perrie_the_pulverizer_attack_trigger_6219;
+mod personal_garruk_relentless_flip;
 mod peter_parker_modal_back_face_cast;
 mod phantom_general_token_anthem;
 mod phyrexian_fleshgorger_ward;

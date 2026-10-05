@@ -13150,6 +13150,10 @@ pub(crate) fn parse_trigger_condition(
         return result;
     }
 
+    if let Some(result) = try_parse_first_name_counter_state_trigger(&lower, ctx) {
+        return result;
+    }
+
     // CR 714.2e: "whenever the final chapter ability of a Saga you control
     // resolves". Dispatched before subject decomposition — the grammatical
     // subject of this clause is an ABILITY, not a permanent, so the generic
@@ -18170,9 +18174,11 @@ fn try_parse_source_counter_state_trigger(lower: &str) -> Option<(TriggerMode, T
 ///   possessive  "~ has [N or more] [type] counters on it"    (Darksteel Reactor)
 ///   existential "there are [N or more] [type] counters on ~" (Mazemind Tome)
 ///
-/// Accepts only the depletion form (`minimum: 0, maximum: Some(0)`) and the
-/// threshold form (`minimum > 0, maximum: None`) of `HasCounters`; mixed/range
-/// forms are rejected, and so is a granted body's "counters on <granter>"
+/// Accepts only the depletion form (`minimum: 0, maximum: Some(0)`), the
+/// threshold form (`minimum > 0, maximum: None`) and the ceiling form
+/// (`minimum: 0, maximum: Some(n)`, Garruk Relentless "two or fewer",
+/// self-limiting because the effect transforms the source to a face without
+/// the trigger) of `HasCounters`; mixed/range forms are rejected, and so is a granted body's "counters on <granter>"
 /// (CR 201.5a), which the existential grammar reads as a `QuantityComparison`
 /// over the granting object rather than the source. All-consuming: the counter
 /// phrase must be the entire condition, so the state-trigger arm
@@ -18190,7 +18196,7 @@ fn parse_source_counter_state_condition(after_keyword: &str) -> Option<StaticCon
         static_cond,
         StaticCondition::HasCounters {
             minimum: 0,
-            maximum: Some(0),
+            maximum: Some(_),
             ..
         } | StaticCondition::HasCounters {
             minimum: 1..,
@@ -18199,6 +18205,35 @@ fn parse_source_counter_state_condition(after_keyword: &str) -> Option<StaticCon
         }
     )
     .then_some(static_cond)
+}
+
+/// CR 603.8: Counter state trigger whose subject is the card's first name
+/// ("When Garruk has two or fewer loyalty counters on him" on Garruk
+/// Relentless). `normalize_card_name_refs` skips first-word short names that
+/// are also subtypes, so a planeswalker's first name reaches here unnormalized.
+/// Bounded to this one trigger shape: the first name is read as `~` only when
+/// it is the subject of a source-counter state trigger.
+fn try_parse_first_name_counter_state_trigger(
+    lower: &str,
+    ctx: &ParseContext,
+) -> Option<(TriggerMode, TriggerDefinition)> {
+    let first_name = ctx
+        .card_name
+        .as_deref()?
+        .split_whitespace()
+        .next()?
+        .to_lowercase();
+    let (rest, prefix) = alt((
+        tag::<_, _, OracleError<'_>>("whenever "),
+        tag("when "),
+    ))
+    .parse(lower)
+    .ok()?;
+    let (rest, _) = tag::<_, _, OracleError<'_>>(first_name.as_str())
+        .parse(rest)
+        .ok()?;
+    let (_, _) = tag::<_, _, OracleError<'_>>(" has ").parse(rest).ok()?;
+    try_parse_source_counter_state_trigger(&format!("{prefix}~{rest}"))
 }
 
 /// CR 303.4 + CR 301.5: Detect a trailing "that are enchanted/equipped by an
