@@ -147,8 +147,12 @@ impl CardDatabase {
         let mut bracket_signals_by_name: HashMap<String, BracketSignals> =
             HashMap::with_capacity(entries.len());
 
+        let mut flavor_aliases: Vec<(String, String)> = Vec::new();
         for (export_key, entry) in entries {
             let storage_key = export_key.to_lowercase();
+            for flavor in &entry.flavor_names {
+                flavor_aliases.push((flavor.clone(), storage_key.clone()));
+            }
             if let Some(face_order) = entry.face_index {
                 face_order_index.insert(storage_key.clone(), face_order);
             }
@@ -181,7 +185,8 @@ impl CardDatabase {
             keys.sort_by_key(|key| face_order_index.get(key).copied().unwrap_or(usize::MAX));
         }
         let search_face_keys = build_search_face_keys(&face_index, &face_order_index);
-        let name_alias_index = build_name_alias_index(face_index.keys());
+        let mut name_alias_index = build_name_alias_index(face_index.keys());
+        register_flavor_name_aliases(&mut name_alias_index, &face_index, flavor_aliases);
         let creature_type_vocabulary = collect_creature_type_vocabulary(face_index.values());
 
         Self {
@@ -243,6 +248,7 @@ impl CardDatabase {
                     .get(&key)
                     .copied()
                     .unwrap_or_default(),
+                flavor_names: Vec::new(),
             };
             // Preserve the database storage key, not merely the printed face
             // name. Meld pairs have two distinct combined-back records with the
@@ -830,6 +836,37 @@ pub(crate) fn build_name_alias_index<'a>(
         .collect()
 }
 
+/// Personal build: register printed flavor names ("Panther Idol") as aliases
+/// of their Oracle card ("mind's eye"). A flavor name never shadows a real card
+/// name or an existing alias, and one printed on two different cards is dropped
+/// as ambiguous.
+pub(crate) fn register_flavor_name_aliases(
+    aliases: &mut HashMap<String, String>,
+    face_index: &HashMap<String, CardFace>,
+    flavor_aliases: Vec<(String, String)>,
+) {
+    let mut flavor_index: HashMap<String, Option<String>> = HashMap::new();
+    for (flavor, key) in flavor_aliases {
+        let folded = fold_card_name_key(&flavor);
+        if face_index.contains_key(&flavor.to_lowercase()) || aliases.contains_key(&folded) {
+            continue;
+        }
+        flavor_index
+            .entry(folded)
+            .and_modify(|existing| {
+                if existing.as_deref() != Some(key.as_str()) {
+                    *existing = None;
+                }
+            })
+            .or_insert(Some(key));
+    }
+    aliases.extend(
+        flavor_index
+            .into_iter()
+            .filter_map(|(alias, key)| key.map(|key| (alias, key))),
+    );
+}
+
 /// The face separator of a composite multi-face name: the first `//` (spaced
 /// or glued) when the name contains one, otherwise the first single `/`.
 /// Returns the text before and after it, untrimmed. A printed name can itself
@@ -928,6 +965,10 @@ struct CardExportEntry {
     /// exported before Task 4 will deserialize to all-false `BracketSignals::default()`.
     #[serde(default)]
     bracket_signals: BracketSignals,
+    /// Personal build: flavor names printed on this card ("Panther Idol" on
+    /// Mind's Eye), registered as name aliases at load.
+    #[serde(default)]
+    flavor_names: Vec<String>,
 }
 
 fn layout_kind_requires_multiple_faces(layout_kind: LayoutKind) -> bool {
@@ -1179,6 +1220,67 @@ mod tests {
         let db = CardDatabase::from_json_str(&json).unwrap();
         assert!(db.get_face_by_name("Test Card").is_some());
         assert!(db.get_legalities("Test Card").is_none());
+    }
+
+    /// Personal build: a minimal export entry carrying printed flavor names.
+    fn flavor_test_entry(name: &str, flavor_names: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "name": name,
+            "mana_cost": { "type": "NoCost" },
+            "card_type": { "supertypes": [], "core_types": [], "subtypes": [] },
+            "power": null,
+            "toughness": null,
+            "loyalty": null,
+            "defense": null,
+            "oracle_text": null,
+            "non_ability_text": null,
+            "flavor_name": null,
+            "keywords": [],
+            "abilities": [],
+            "triggers": [],
+            "static_abilities": [],
+            "replacements": [],
+            "color_override": null,
+            "scryfall_oracle_id": null,
+            "legalities": { "commander": "Legal" },
+            "flavor_names": flavor_names,
+        })
+    }
+
+    #[test]
+    fn personal_flavor_names_resolve_to_oracle_card() {
+        let mut map = serde_json::Map::new();
+        map.insert(
+            "mind's eye".to_string(),
+            flavor_test_entry("Mind's Eye", &["Panther Idol"]),
+        );
+        map.insert(
+            "sword of the animist".to_string(),
+            flavor_test_entry("Sword of the Animist", &["Skybreaker, Sword of Bashenga"]),
+        );
+        // A flavor name must never shadow a real card name.
+        map.insert(
+            "thran dynamo".to_string(),
+            flavor_test_entry("Thran Dynamo", &["Mind's Eye"]),
+        );
+        // A flavor name printed on two different cards is ambiguous.
+        map.insert("card a".to_string(), flavor_test_entry("Card A", &["Shared Flavor"]));
+        map.insert("card b".to_string(), flavor_test_entry("Card B", &["Shared Flavor"]));
+
+        let db = CardDatabase::from_json_str(&serde_json::Value::Object(map).to_string()).unwrap();
+
+        assert_eq!(db.get_face_by_name("Panther Idol").unwrap().name, "Mind's Eye");
+        assert_eq!(db.get_face_by_name("panther idol").unwrap().name, "Mind's Eye");
+        assert_eq!(
+            db.get_face_by_name("Skybreaker, Sword of Bashenga").unwrap().name,
+            "Sword of the Animist"
+        );
+        assert_eq!(
+            db.legality_status("Panther Idol", LegalityFormat::Commander),
+            Some(LegalityStatus::Legal)
+        );
+        assert_eq!(db.get_face_by_name("Mind's Eye").unwrap().name, "Mind's Eye");
+        assert!(db.get_face_by_name("Shared Flavor").is_none());
     }
 
     #[test]

@@ -167,6 +167,10 @@ pub struct SetCard {
     pub name: String,
     #[serde(default)]
     pub face_name: Option<String>,
+    /// Personal build: Universes Beyond name printed on this printing
+    /// ("Panther Idol" on Mind's Eye).
+    #[serde(default)]
+    pub flavor_name: Option<String>,
     #[serde(default)]
     pub rarity: String,
     #[serde(default)]

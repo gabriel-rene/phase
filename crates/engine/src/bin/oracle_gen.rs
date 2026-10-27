@@ -59,6 +59,11 @@ struct CardExportEntry {
     /// Populated by scanning per-set MTGJSON files in `data/mtgjson/sets/`.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     rarities: BTreeSet<Rarity>,
+    /// Personal build: flavor names printed on this card across all sets
+    /// ("Panther Idol" on Mind's Eye). The runtime database registers them as
+    /// name aliases so decklists that use the printed name resolve.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    flavor_names: BTreeSet<String>,
     /// Bracket-axis signals stamped during export. Omitted when all four
     /// flags are false to keep card-data.json compact.
     #[serde(default, skip_serializing_if = "is_clean_signals")]
@@ -785,6 +790,7 @@ fn build_card_work<'a>(
                     printings: source.printings.clone(),
                     rulings: source.rulings.clone(),
                     rarities,
+                    flavor_names: BTreeSet::new(),
                     bracket_signals,
                     trace_input: ctx
                         .trace_enabled
@@ -854,6 +860,7 @@ fn build_card_work<'a>(
                     printings: faces[0].printings.clone(),
                     rulings,
                     rarities,
+                    flavor_names: BTreeSet::new(),
                     bracket_signals,
                     trace_input: ctx
                         .trace_enabled
@@ -894,6 +901,7 @@ fn build_card_work<'a>(
                 printings: faces[0].printings.clone(),
                 rulings: faces[0].rulings.clone(),
                 rarities,
+                flavor_names: BTreeSet::new(),
                 bracket_signals,
                 trace_input: ctx
                     .trace_enabled
@@ -955,6 +963,48 @@ fn write_oracle_subtypes(
         ),
         Err(e) => eprintln!("warning: failed to write {}: {e}", out_path.display()),
     }
+}
+
+/// Personal build: card name (lowercase, per face) → flavor names printed on
+/// it, from the per-set MTGJSON files. Same directory and keying as
+/// [`build_rarity_map`].
+fn build_flavor_name_map(mtgjson_path: &std::path::Path) -> HashMap<String, BTreeSet<String>> {
+    let sets_dir = mtgjson_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("sets");
+    let Ok(entries) = std::fs::read_dir(&sets_dir) else {
+        return HashMap::new();
+    };
+
+    let mut map: HashMap<String, BTreeSet<String>> = HashMap::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(data) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(set_file) = serde_json::from_str::<SetFile>(&data) else {
+            continue;
+        };
+        for card in set_file.data.cards {
+            let Some(flavor) = card.flavor_name.filter(|f| !f.trim().is_empty()) else {
+                continue;
+            };
+            let key = card
+                .face_name
+                .as_deref()
+                .unwrap_or(&card.name)
+                .to_lowercase();
+            if flavor.to_lowercase() != key {
+                map.entry(key).or_default().insert(flavor);
+            }
+        }
+    }
+    eprintln!("Collected flavor names for {} cards", map.len());
+    map
 }
 
 fn build_rarity_map(mtgjson_path: &std::path::Path) -> HashMap<String, BTreeSet<Rarity>> {
@@ -1588,6 +1638,14 @@ fn main() {
             },
             gated_count
         );
+    }
+
+    // Personal build: attach printed flavor names (see `CardExportEntry::flavor_names`).
+    let flavor_name_map = build_flavor_name_map(&mtgjson_path);
+    for (key, entry) in face_index.iter_mut() {
+        if let Some(names) = flavor_name_map.get(key) {
+            entry.flavor_names = names.clone();
+        }
     }
 
     let json = serde_json::to_string(&face_index).expect("Failed to serialize card data");
@@ -2360,6 +2418,7 @@ mod tests {
             printings: printings.iter().map(|s| s.to_string()).collect(),
             rulings: Vec::new(),
             rarities: BTreeSet::new(),
+            flavor_names: BTreeSet::new(),
             bracket_signals: BracketSignals::default(),
             trace_input: None,
         }
@@ -2422,6 +2481,7 @@ mod tests {
             uuid: format!("{name}-uuid"),
             name: name.to_string(),
             face_name: face_name.map(str::to_string),
+            flavor_name: None,
             rarity: "rare".to_string(),
             identifiers: SetIdentifiers {
                 scryfall_id: printing_id.map(str::to_string),
